@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <ctime>
 #include <cstdlib>
+#include <cmath>
 
 #define maskCols 3
 #define maskRows 3
@@ -230,17 +231,17 @@ __global__ void SobelEdgeDetector(unsigned char * inputImage, const float * __re
                 sum += s_ImageData[ty+m][tx+n] * kernel[kernelSizeX * m + n];
             }
             if ( kernelSizeX * m + n == 6 || kernelSizeX * m + n == 7 || kernelSizeX * m + n == 8 ) {
-                sum -= s_ImageData[ty+m][tx+n] * kernel[kernelSizeX * m + n];
+                sum += s_ImageData[ty+m][tx+n] * kernel[kernelSizeX * m + n];
             }
             if ( kernelSizeX * m + n == 2 || kernelSizeX * m + n == 5 || kernelSizeX * m + n == 8 ) {
                 sum2 += s_ImageData[ty+m][tx+n] * kernel2[kernelSizeX * m + n];
             }
             if ( kernelSizeX * m + n == 0 || kernelSizeX * m + n == 3 || kernelSizeX * m + n == 6 ) {
-                sum2 -= s_ImageData[ty+m][tx+n] * kernel2[kernelSizeX * m + n];
+                sum2 += s_ImageData[ty+m][tx+n] * kernel2[kernelSizeX * m + n];
             }
         }
     }
-    outputImageData[dataSizeX * (by * TILE_SIZE + ty) + (bx * TILE_SIZE + tx)] = abs(sum) + abs(sum2);
+    outputImageData[dataSizeX * (by * TILE_SIZE + ty) + (bx * TILE_SIZE + tx)] = ceil(sqrt((sum*sum) + (sum2*sum2)));
 }
 
 int main(){
@@ -257,32 +258,32 @@ int main(){
 
     // cout << "Height x Width " << height << "x" << width << endl; 
  
-    float hostMaskData[maskRows*maskCols];
-    for(int i=0; i< maskCols*maskCols; i++){
-        hostMaskData[i] = 1.0/(maskRows*maskCols);
-    }
-
     // float hostMaskData[maskRows*maskCols];
-    // hostMaskData[0] = 1;
-    // hostMaskData[1] = 2;
-    // hostMaskData[2] = 1;
-    // hostMaskData[3] = 0;
-    // hostMaskData[4] = 0;
-    // hostMaskData[5] = 0;
-    // hostMaskData[6] = -1;
-    // hostMaskData[7] = 2;
-    // hostMaskData[8] = -1;
+    // for(int i=0; i< maskCols*maskCols; i++){
+    //     hostMaskData[i] = 1.0/(maskRows*maskCols);
+    // }
 
-    // float hostMaskData2[maskRows*maskCols];
-    // hostMaskData2[0] = -1;
-    // hostMaskData2[1] = 0;
-    // hostMaskData2[2] = 1;
-    // hostMaskData2[3] = -2;
-    // hostMaskData2[4] = 0;
-    // hostMaskData2[5] = 2;
-    // hostMaskData2[6] = -1;
-    // hostMaskData2[7] = 0;
-    // hostMaskData2[8] = 1;
+    float hostMaskData[maskRows*maskCols];
+    hostMaskData[0] = 1;
+    hostMaskData[1] = 2;
+    hostMaskData[2] = 1;
+    hostMaskData[3] = 0;
+    hostMaskData[4] = 0;
+    hostMaskData[5] = 0;
+    hostMaskData[6] = -1;
+    hostMaskData[7] = 2;
+    hostMaskData[8] = -1;
+
+    float hostMaskData2[maskRows*maskCols];
+    hostMaskData2[0] = -1;
+    hostMaskData2[1] = 0;
+    hostMaskData2[2] = 1;
+    hostMaskData2[3] = -2;
+    hostMaskData2[4] = 0;
+    hostMaskData2[5] = 2;
+    hostMaskData2[6] = -1;
+    hostMaskData2[7] = 0;
+    hostMaskData2[8] = 1;
 
 
     clock_t begin = clock();
@@ -307,20 +308,20 @@ int main(){
 
     unsigned char *d_image = 0, *d_seqimg = 0;
     float *d_hostmaskdata = 0;
-    // float *d_hostmaskdata2 = 0;
+    float *d_hostmaskdata2 = 0;
 
     cudaMalloc((void**)&d_image, sizeof(unsigned char) * width * height);
     cudaMalloc((void**)&d_seqimg, sizeof(unsigned char) * width * height);
     cudaMalloc((void**)&d_hostmaskdata, sizeof(float) * maskCols * maskRows);
-    // cudaMalloc((void**)&d_hostmaskdata2, sizeof(float) * maskCols * maskRows);    
+    cudaMalloc((void**)&d_hostmaskdata2, sizeof(float) * maskCols * maskRows);    
 
     cudaMemcpy(d_image, image, sizeof(char) * width * height, cudaMemcpyHostToDevice);
     cudaMemcpy(d_hostmaskdata, hostMaskData, sizeof(float) * maskCols * maskRows, cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_hostmaskdata2, hostMaskData2, sizeof(float) * maskCols * maskRows, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_hostmaskdata2, hostMaskData2, sizeof(float) * maskCols * maskRows, cudaMemcpyHostToDevice);
 
     cudaEventRecord(start_kernel);
-    // SobelEdgeDetector<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_hostmaskdata2, d_seqimg, maskRows, maskCols, width, height, imgchannels);
-    convKernel<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_seqimg, maskRows, maskCols, width, height, imgchannels);
+    SobelEdgeDetector<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_hostmaskdata2, d_seqimg, maskRows, maskCols, width, height, imgchannels);
+    // convKernel<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_seqimg, maskRows, maskCols, width, height, imgchannels);
     cudaEventRecord(stop_kernel);
 
     cudaMemcpy(seq_img, d_seqimg, sizeof(char) * width * height, cudaMemcpyDeviceToHost);
