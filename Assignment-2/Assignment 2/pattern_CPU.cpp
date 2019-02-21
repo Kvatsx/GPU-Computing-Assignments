@@ -47,7 +47,7 @@ void matchPattern_CPU(unsigned int *text, unsigned int *words, int *matches, int
 int main(int argc, const char **argv)
 {
 
-	int length, len, nwords=1, matches[nwords];
+	int length, len, nwords=20, matches[nwords];
 	char *ctext, keywords[nwords][LINEWIDTH], *line;
 	line = (char*) malloc(sizeof(char)*LINEWIDTH);
 	unsigned int  *text,  *words;
