@@ -1,170 +1,250 @@
 /*
  * @Author: Kaustav Vats 
  * @Roll-Number: 2016048 
+ * @Ref:- CPU Code by TA
  */
 
  #include <iostream>
+ #include <stdlib.h>
  #include <stdio.h>
+ #include <string.h>
+ #include <math.h>
+ #include <ctime>
 
 using namespace std;
 
 #define LINEWIDTH 20
-// #define TOTAL 1025
+#define TOTAL 32
+#define MAX_WORDS 20
+
+void CheckDiff(int * cpu, int * gpu, int nwords) {
+    int Correct = 0, Wrong = 0;
+    for (int i=0; i<nwords; i++) {
+        if ( cpu[i] == gpu[i] ) {
+            Correct++;
+        }
+        else {
+            Wrong++;
+        }
+    }
+    printf("Correctly Matched: %d\n", Correct);
+    if (Wrong == 0) {
+        printf("Identical Results\n\n");
+    }
+}
+
+void matchPattern_CPU(unsigned int *text, unsigned int *words, int *matches, int nwords, int length)
+{
+	unsigned int word;
+
+	for (int l=0; l<length; l++)
+	{
+		for (int offset=0; offset<4; offset++)
+		{
+			if (offset==0) {
+				word = text[l];
+			}
+			else
+				word = (text[l]>>(8*offset)) + (text[l+1]<<(32-8*offset)); 
+
+			for (int w=0; w<nwords; w++){
+				matches[w] += (word==words[w]);
+			} 
+		}
+	}
+}
 
 __global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *matches, int nwords, int length) {
-    // printf("Kernel Called\n");
-    // __shared__ int sm_matches[nwords];
-    // __shared__ unsigned int sm_text[blockDim.x+1][blockDim.y];
 
-    int row = blockIdx.y*blockDim.y + threadIdx.y;
-    int col = blockIdx.x*blockDim.x + threadIdx.x;
+    int row2 = blockDim.x*threadIdx.y;
+    int row = threadIdx.y;
+    int col = threadIdx.x;
 
-    int total_threads = gridDim.x*gridDim.y*blockDim.x*blockDim.y;
-
-    // __shared__ unsigned int sm_text[1025];
+    __shared__ unsigned int sm_text[TOTAL][TOTAL+1];
+    __shared__ unsigned int sm_words[MAX_WORDS];
+    // __shared__ int sm_matches[MAX_WORDS];
 
     int xDist = threadIdx.x + blockIdx.x*blockDim.x;
     int yDist = threadIdx.y*blockDim.x*gridDim.x + blockDim.y*blockIdx.y*blockDim.x*gridDim.x;
     int index = xDist + yDist;
 
-    int i=0;
     unsigned int word;
-    while ( (index + i*total_threads) < length ) {
-        // sm_text[index] = text[index + i*total_threads];
-        // if ( threadIdx.x == (blockDim.x-1) && threadIdx.y == (blockDim.y-1)) {
-            // sm_text[total_threads] = text[index + i*total_threads+1];
-        // }
-        // __syncthreads();
 
+    if ((row2+col) < nwords) {
+        sm_words[row2+col] = words[row2+col];
+        // sm_matches[row2+col] = 0;
+    }
+
+    if (index < length) {
+        sm_text[row][col] = text[index];
+        if ( threadIdx.x == (blockDim.x-1)) {
+            sm_text[row][col+1] = text[index + 1];
+        }
+    }
+    __syncthreads();
+
+    if (index < length) {
         for (int offset=0; offset<4; offset++)
         {
             if (offset==0) {
-                word = text[index];
-                // word = sm_text[index];
+                // word = text[index];
+                word = sm_text[row][col];
             }
             else {
-                word = (text[index]>>(8*offset)) + (text[index+1]<<(32-8*offset)); 
-                // word = (sm_text[index]>>(8*offset)) + (sm_text[index+1]<<(32-8*offset)); 
+                // word = (text[idnex]>>(8*offset)) + (index+1]<<(32-8*offset)); 
+                word = (sm_text[row][col]>>(8*offset)) + (sm_text[row][col+1]<<(32-8*offset)); 
             }
 
             for (int w=0; w<nwords; w++){
-                if (word == words[w]) {
+                if (word == sm_words[w]) {
+                    // atomicAdd((int *)&(sm_matches[w]), 1);
                     atomicAdd(&matches[w], 1);
+                    break;
                 }
             }        
         }
-        i++;
-        // index += total_threads;
     }
+    // if ((row2+col) < nwords) {
+    //     atomicAdd(&matches[row2+col], sm_matches[row2+col]);
+    // }
 }
 
 int main() {
 
-    int length, len, nwords=20, matches[nwords];
-	char *ctext, keywords[nwords][LINEWIDTH], *line;
-	line = (char*) malloc(sizeof(char)*LINEWIDTH);
-	unsigned int  *text,  *words;
-	memset(matches, 0, sizeof(matches));
+    const char * fileData[3] = { "./data/small.txt", "./data/medium.txt", "./data/large.txt" };
+    int wl;
+    for (wl=0; wl<3; wl++) {
 
-	// char filename[1024];
-	// memset(filename, '\0', sizeof(filename));
+        int length, len, nwords=20, matches[nwords];
+        char *ctext, keywords[nwords][LINEWIDTH], *line;
+        line = (char*) malloc(sizeof(char)*LINEWIDTH);
+        unsigned int  *text,  *words;
+        memset(matches, 0, sizeof(matches));
 
-	// cin >> filename;
-	// read in text and keywords for processing
-	FILE *fp, *wfile;
-	// wfile = fopen("./data/test.txt","r");
-	wfile = fopen("./data/keywords.txt","r");
-	if (!wfile)
-	{	
-		printf("keywords.txt: File not found.\n");	
-		exit(0);
-	}
+        // char filename[1024];
+        // memset(filename, '\0', sizeof(filename));
 
-	int k=0, cnt = nwords;
-	size_t read, linelen = LINEWIDTH;
-	while((read = getline(&line, &linelen, wfile)) != -1 && cnt--)
-	{
-		strncpy(keywords[k], line, sizeof(line));
-		keywords[k][4] = '\0';
-		k++;
-	}
-	fclose(wfile);
+        // cin >> filename;
+        // read in text and keywords for processing
+        FILE *fp, *wfile;
+        // wfile = fopen("./data/test.txt","r");
+        wfile = fopen("./data/keywords.txt","r");
+        if (!wfile)
+        {	
+            printf("keywords.txt: File not found.\n");	
+            exit(0);
+        }
 
-	// cout << "K: " << k << endl;
-	fp = fopen("./data/small.txt","r");
-	// fp = fopen("./data/small.txt","r");
-	if (!fp) {	
-		printf("Unable to open the file.\n");	
-		exit(0);
-	}
+        int k=0, cnt = nwords;
+        size_t read, linelen = LINEWIDTH;
+        while((read = getline(&line, &linelen, wfile)) != -1 && cnt--)
+        {
+            strncpy(keywords[k], line, sizeof(line));
+            keywords[k][4] = '\0';
+            k++;
+        }
+        fclose(wfile);
 
-	length = 0;
-	while (getc(fp) != EOF) length++;
+        // cout << "K: " << k << endl;
+        fp = fopen(fileData[wl],"r");
+        // fp = fopen("./data/small.txt","r");
+        if (!fp) {	
+            printf("Unable to open the file.\n");	
+            exit(0);
+        }
 
-	ctext = (char *) malloc(length+4);
+        length = 0;
+        while (getc(fp) != EOF) length++;
 
-	rewind(fp);
+        ctext = (char *) malloc(length+4);
 
-	for (int l=0; l<length; l++) ctext[l] = getc(fp);
-	for (int l=length; l<length+4; l++) ctext[l] = ' ';
+        rewind(fp);
 
-	fclose(fp);
+        for (int l=0; l<length; l++) ctext[l] = getc(fp);
+        for (int l=length; l<length+4; l++) ctext[l] = ' ';
 
-	printf("Length : %d\n", length );
-	// define number of words of text, and set pointers
-	len  = length/4;
-	text = (unsigned int *) ctext;
+        fclose(fp);
 
-	// define words for matching
-	words = (unsigned int *) malloc(nwords*sizeof(unsigned int));
+        printf("Length : %d\n", length );
+        // define number of words of text, and set pointers
+        len  = length/4;
+        text = (unsigned int *) ctext;
 
-	// cout << "Words: ";
-	for (int w=0; w<nwords; w++)
-	{
-		words[w] = ((unsigned int) keywords[w][0])
-             + ((unsigned int) keywords[w][1])*(1<<8)
-             + ((unsigned int) keywords[w][2])*(1<<16)
-             + ((unsigned int) keywords[w][3])*(1<<24);
-		// cout << words[w] << "\t";
-	}
-	// cout << endl;
+        // define words for matching
+        words = (unsigned int *) malloc(nwords*sizeof(unsigned int));
 
-    // GPU Execution
-    const dim3 block_size(32, 32);
-    const dim3 num_blocks(1024, 1024);
+        // cout << "Words: ";
+        for (int w=0; w<nwords; w++)
+        {
+            words[w] = ((unsigned int) keywords[w][0])
+                + ((unsigned int) keywords[w][1])*(1<<8)
+                + ((unsigned int) keywords[w][2])*(1<<16)
+                + ((unsigned int) keywords[w][3])*(1<<24);
+            // cout << words[w] << "\t";
+        }
+        // cout << endl;
 
-    unsigned int * d_text, * d_words;
-    int * d_matches;
-    int * mat;
-    mat = (int* )malloc(sizeof(int)*nwords);
+        // GPU Execution
+        const dim3 block_size(32, 32);
+        const dim3 num_blocks(1024, 1024);
 
-    cudaMalloc((void**)&d_text, sizeof(unsigned int) * len);
-    cudaMalloc((void**)&d_words, sizeof(unsigned int)*nwords);
-    cudaMalloc((void**)&d_matches, sizeof(int)*nwords);
-
-    cudaMemcpy(d_text, text, sizeof(unsigned int) * len, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_words, words, sizeof(unsigned int) * nwords, cudaMemcpyHostToDevice);
-
-    matchPattern_GPU<<<num_blocks, block_size>>>(d_text, d_words, d_matches, nwords, len);
-
-    cudaMemcpy(mat, d_matches, sizeof(int) * nwords, cudaMemcpyDeviceToHost);
+        cudaEvent_t start_kernel, stop_kernel, m_kernel_start, m_kernel_stop;
+        cudaEventCreate(&start_kernel);
+        cudaEventCreate(&stop_kernel);
+        cudaEventCreate(&m_kernel_start);
+        cudaEventCreate(&m_kernel_stop);
 
 
-	// CPU execution
-	// const clock_t begin_time = clock();
-	// matchPattern_CPU(text, words, matches, nwords, len);
-	// float runTime = (float)( clock() - begin_time ) /  CLOCKS_PER_SEC;
-	// printf("Time for matching keywords: %fs\n\n", runTime);
+        unsigned int * d_text, * d_words;
+        int * d_matches;
+        int * mat;
+        mat = (int* )malloc(sizeof(int)*nwords);
 
-	printf("Printing Matches:\n");
-	printf("Word\t  |\tNumber of Matches\n===================================\n");
-	for (int i = 0; i < nwords; ++i)
-		printf("%s\t  |\t%d\n", keywords[i], mat[i]);
+        cudaEventRecord(m_kernel_start);
+        cudaMalloc((void**)&d_text, sizeof(unsigned int) * len);
+        cudaMalloc((void**)&d_words, sizeof(unsigned int)*nwords);
+        cudaMalloc((void**)&d_matches, sizeof(int)*nwords);
 
-	free(ctext);
-    free(words);
-    cudaFree(d_text);
-    cudaFree(d_words);
-    cudaFree(d_matches);
+        cudaMemcpy(d_text, text, sizeof(unsigned int) * len, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_words, words, sizeof(unsigned int) * nwords, cudaMemcpyHostToDevice);
 
+        cudaEventRecord(start_kernel);
+        matchPattern_GPU<<<num_blocks, block_size>>>(d_text, d_words, d_matches, nwords, len);
+        cudaEventRecord(stop_kernel);
+        
+        cudaEventSynchronize(stop_kernel);
+
+        cudaMemcpy(mat, d_matches, sizeof(int) * nwords, cudaMemcpyDeviceToHost);
+        cudaEventRecord(m_kernel_stop);
+        cudaEventSynchronize(m_kernel_stop);
+
+        float k_time, k2_time ;
+        cudaEventElapsedTime(&k_time, start_kernel, stop_kernel);
+        cudaEventElapsedTime(&k2_time, m_kernel_start, m_kernel_stop);
+        cout  << "[" << wl << "] GPU-Kernel Time: " << k_time << endl;
+        cout  << "[" << wl << "] GPU-Kernel+Memory Time: " << k2_time << endl;
+
+        // CPU execution
+        const clock_t begin_time = clock();
+        matchPattern_CPU(text, words, matches, nwords, len);
+        float runTime = (float)( clock() - begin_time ) /  CLOCKS_PER_SEC;
+        // printf("CPU Time: %fs\n\n", runTime);
+        cout  << "[" << wl << "] CPU-Time: " << runTime << "s" << endl;
+
+        cout << "[" << wl << "] Speedup: " << (runTime*1000)/k_time << endl;
+        cout << "[" << wl << "] Speedup with memory Transfer: " << (runTime*1000)/k2_time << endl;
+        
+        CheckDiff(matches, mat, nwords);
+
+        printf("[%d] Printing Matches:\n", wl);
+        printf("Word\t  |\tNumber of Matches\n===================================\n");
+        for (int i = 0; i < nwords; ++i)
+            printf("%s\t  |\t%d\n", keywords[i], mat[i]);
+
+        free(ctext);
+        free(words);
+        cudaFree(d_text);
+        cudaFree(d_words);
+        cudaFree(d_matches);
+    }
 }

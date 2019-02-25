@@ -83,26 +83,18 @@ __global__ void convKernel(unsigned char * inputImage, const float * __restrict_
     int tx = threadIdx.x, ty = threadIdx.y;
     int bx = blockIdx.x, by = blockIdx.y;
 
-    // printf("threadIdx.x %d\n", tx);
-    // printf("threadIdy.y %d\n", ty);
-    // printf("blockIdx.x %d\n", bx);
-    // printf("blockIdy.y %d\n", by); 
-
     int temp = TILE_SIZE * ty + tx;
     int row = temp/SM;
     int col = temp%SM;
     int tempX = bx*TILE_SIZE + col - kCenterX;
     int tempY = by*TILE_SIZE + row - kCenterY;
     
-    if ( tempX < dataSizeX && tempY < dataSizeY && tempX >= 0 && tempY >= 0 ) {
+    if ( tempY < dataSizeY && tempX >= 0 && tempY >= 0 && tempX < dataSizeX) {
         s_ImageData[row][col] = inputImageData[tempY * dataSizeY + tempX];
     }
     else {
         s_ImageData[row][col] = 0;
     }
-
-    // printf("row1: %d\n", row);
-    // printf("col1: %d\n", col);
 
     temp = TILE_SIZE * ty + tx + TILE_SIZE * TILE_SIZE;
     row = temp/SM;
@@ -116,9 +108,6 @@ __global__ void convKernel(unsigned char * inputImage, const float * __restrict_
     else if ( row < SM ) {
         s_ImageData[row][col] = 0;
     }
-
-    // printf("row2: %d\n", row);
-    // printf("col2: %d\n", col);
 
     // int row = by * blockDim.y + ty;
     // int col = bx * blockDim.x + tx;
@@ -166,11 +155,6 @@ __global__ void SobelEdgeDetector(unsigned char * inputImage, const float * __re
     int tx = threadIdx.x, ty = threadIdx.y;
     int bx = blockIdx.x, by = blockIdx.y;
 
-    // printf("threadIdx.x %d\n", tx);
-    // printf("threadIdy.y %d\n", ty);
-    // printf("blockIdx.x %d\n", bx);
-    // printf("blockIdy.y %d\n", by); 
-
     int temp = TILE_SIZE * ty + tx;
     int row = temp/SM;
     int col = temp%SM;
@@ -184,9 +168,6 @@ __global__ void SobelEdgeDetector(unsigned char * inputImage, const float * __re
         s_ImageData[row][col] = 0;
     }
 
-    // printf("row1: %d\n", row);
-    // printf("col1: %d\n", col);
-
     temp = TILE_SIZE * ty + tx + TILE_SIZE * TILE_SIZE;
     row = temp/SM;
     col = temp%SM;
@@ -199,9 +180,6 @@ __global__ void SobelEdgeDetector(unsigned char * inputImage, const float * __re
     else if ( row < SM ) {
         s_ImageData[row][col] = 0;
     }
-
-    // printf("row2: %d\n", row);
-    // printf("col2: %d\n", col);
 
     // int row = by * blockDim.y + ty;
     // int col = bx * blockDim.x + tx;
@@ -250,97 +228,97 @@ int main(){
 
     char Images[6][15] = { "image64.png", "image128.png", "image256.png", "image512.png", "image1024.png", "image2048.png" };
 
-    int j = 3;
+    int j = 4;
     // for (j=0; j<; j++) {
 
-    image = stbi_load( Images[j], &width, &height, &bpp, imgchannels );
-    seq_img = (unsigned char*)malloc(width*height*sizeof(unsigned char));
+        image = stbi_load( Images[j], &width, &height, &bpp, imgchannels );
+        seq_img = (unsigned char*)malloc(width*height*sizeof(unsigned char));
 
-    // cout << "Height x Width " << height << "x" << width << endl; 
- 
-    // float hostMaskData[maskRows*maskCols];
-    // for(int i=0; i< maskCols*maskCols; i++){
-    //     hostMaskData[i] = 1.0/(maskRows*maskCols);
-    // }
+        // cout << "Height x Width " << height << "x" << width << endl; 
+    
+        // float hostMaskData[maskRows*maskCols];
+        // for(int i=0; i< maskCols*maskCols; i++){
+        //     hostMaskData[i] = 1.0/(maskRows*maskCols);
+        // }
 
-    float hostMaskData[maskRows*maskCols];
-    hostMaskData[0] = 1;
-    hostMaskData[1] = 2;
-    hostMaskData[2] = 1;
-    hostMaskData[3] = 0;
-    hostMaskData[4] = 0;
-    hostMaskData[5] = 0;
-    hostMaskData[6] = -1;
-    hostMaskData[7] = 2;
-    hostMaskData[8] = -1;
+        float hostMaskData[maskRows*maskCols];
+        hostMaskData[0] = 1;
+        hostMaskData[1] = 2;
+        hostMaskData[2] = 1;
+        hostMaskData[3] = 0;
+        hostMaskData[4] = 0;
+        hostMaskData[5] = 0;
+        hostMaskData[6] = -1;
+        hostMaskData[7] = 2;
+        hostMaskData[8] = -1;
 
-    float hostMaskData2[maskRows*maskCols];
-    hostMaskData2[0] = -1;
-    hostMaskData2[1] = 0;
-    hostMaskData2[2] = 1;
-    hostMaskData2[3] = -2;
-    hostMaskData2[4] = 0;
-    hostMaskData2[5] = 2;
-    hostMaskData2[6] = -1;
-    hostMaskData2[7] = 0;
-    hostMaskData2[8] = 1;
+        float hostMaskData2[maskRows*maskCols];
+        hostMaskData2[0] = -1;
+        hostMaskData2[1] = 0;
+        hostMaskData2[2] = 1;
+        hostMaskData2[3] = -2;
+        hostMaskData2[4] = 0;
+        hostMaskData2[5] = 2;
+        hostMaskData2[6] = -1;
+        hostMaskData2[7] = 0;
+        hostMaskData2[8] = 1;
 
 
-    clock_t begin = clock();
-    sequentialConvolution(image, hostMaskData, seq_img, maskRows, maskCols, width, height, imgchannels);
-    clock_t end = clock();
-    double elapsed_time = double(end-begin) / CLOCKS_PER_SEC;
-    elapsed_time *= 1000;
-    // cout << j << " CPU: " << elapsed_time << endl;
-    // stbi_write_png("mynew_seq.png", width, height, imgchannels, seq_img, 0);
+        clock_t begin = clock();
+        sequentialConvolution(image, hostMaskData, seq_img, maskRows, maskCols, width, height, imgchannels);
+        clock_t end = clock();
+        double elapsed_time = double(end-begin) / CLOCKS_PER_SEC;
+        elapsed_time *= 1000;
+        // cout << j << " CPU: " << elapsed_time << endl;
+        // stbi_write_png("mynew_seq.png", width, height, imgchannels, seq_img, 0);
 
-    // cuda Program
+        // cuda Program
 
-    cudaEvent_t start_kernel, stop_kernel;
-    cudaEventCreate(&start_kernel);
-    cudaEventCreate(&stop_kernel);
+        cudaEvent_t start_kernel, stop_kernel;
+        cudaEventCreate(&start_kernel);
+        cudaEventCreate(&stop_kernel);
 
-    const dim3 block_size(TILE_SIZE, TILE_SIZE);
-    const dim3 num_blocks(width/TILE_SIZE, height/TILE_SIZE);
+        const dim3 block_size(TILE_SIZE, TILE_SIZE);
+        const dim3 num_blocks(width/TILE_SIZE, height/TILE_SIZE);
 
-    // cout << "Block Size " << block_size.x << "x" << block_size.y << endl;
-    // cout << "Num Block " << num_blocks.x << "x" << num_blocks.y << endl;
+        // cout << "Block Size " << block_size.x << "x" << block_size.y << endl;
+        // cout << "Num Block " << num_blocks.x << "x" << num_blocks.y << endl;
 
-    unsigned char *d_image = 0, *d_seqimg = 0;
-    float *d_hostmaskdata = 0;
-    float *d_hostmaskdata2 = 0;
+        unsigned char *d_image = 0, *d_seqimg = 0;
+        float *d_hostmaskdata = 0;
+        float *d_hostmaskdata2 = 0;
 
-    cudaMalloc((void**)&d_image, sizeof(unsigned char) * width * height);
-    cudaMalloc((void**)&d_seqimg, sizeof(unsigned char) * width * height);
-    cudaMalloc((void**)&d_hostmaskdata, sizeof(float) * maskCols * maskRows);
-    cudaMalloc((void**)&d_hostmaskdata2, sizeof(float) * maskCols * maskRows);    
+        cudaMalloc((void**)&d_image, sizeof(unsigned char) * width * height);
+        cudaMalloc((void**)&d_seqimg, sizeof(unsigned char) * width * height);
+        cudaMalloc((void**)&d_hostmaskdata, sizeof(float) * maskCols * maskRows);
+        cudaMalloc((void**)&d_hostmaskdata2, sizeof(float) * maskCols * maskRows);    
 
-    cudaMemcpy(d_image, image, sizeof(char) * width * height, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_hostmaskdata, hostMaskData, sizeof(float) * maskCols * maskRows, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_hostmaskdata2, hostMaskData2, sizeof(float) * maskCols * maskRows, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_image, image, sizeof(char) * width * height, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_hostmaskdata, hostMaskData, sizeof(float) * maskCols * maskRows, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_hostmaskdata2, hostMaskData2, sizeof(float) * maskCols * maskRows, cudaMemcpyHostToDevice);
 
-    cudaEventRecord(start_kernel);
-    SobelEdgeDetector<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_hostmaskdata2, d_seqimg, maskRows, maskCols, width, height, imgchannels);
-    // convKernel<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_seqimg, maskRows, maskCols, width, height, imgchannels);
-    cudaEventRecord(stop_kernel);
+        cudaEventRecord(start_kernel);
+        SobelEdgeDetector<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_hostmaskdata2, d_seqimg, maskRows, maskCols, width, height, imgchannels);
+        // convKernel<<<num_blocks, block_size>>>(d_image, d_hostmaskdata, d_seqimg, maskRows, maskCols, width, height, imgchannels);
+        cudaEventRecord(stop_kernel);
 
-    cudaMemcpy(seq_img, d_seqimg, sizeof(char) * width * height, cudaMemcpyDeviceToHost);
+        cudaMemcpy(seq_img, d_seqimg, sizeof(char) * width * height, cudaMemcpyDeviceToHost);
 
-    cudaEventSynchronize(stop_kernel);
-    float k_time ;
-    cudaEventElapsedTime(&k_time, start_kernel, stop_kernel);
-    // cout << j << " GPU: " << k_time << endl;
+        cudaEventSynchronize(stop_kernel);
+        float k_time ;
+        cudaEventElapsedTime(&k_time, start_kernel, stop_kernel);
+        // cout << j << " GPU: " << k_time << endl;
 
-    stbi_write_png("mynew_seq.png", width, height, imgchannels, seq_img, 0);    
+        stbi_write_png("mynew_seq.png", width, height, imgchannels, seq_img, 0);    
 
-    cout << elapsed_time/k_time << ", ";
+        cout << elapsed_time/k_time << ", ";
 
-    cudaFree(d_image);
-    cudaFree(d_seqimg);
-    cudaFree(d_hostmaskdata);
+        cudaFree(d_image);
+        cudaFree(d_seqimg);
+        cudaFree(d_hostmaskdata);
 
-    free(image);
-    free(seq_img);
+        free(image);
+        free(seq_img);
 
     // }
     cout << endl;

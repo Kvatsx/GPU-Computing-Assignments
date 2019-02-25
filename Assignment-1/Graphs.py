@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 
+# In[]
 x = [64, 128, 256, 512, 1024, 2048]
 y = [
     [17.48, 83.5008, 167.7, 249.205, 266.049, 279.15],
@@ -17,6 +18,7 @@ size = [3, 5, 7, 9, 11]
 # kernel_9 = 
 # kernel_11 = 
 
+# In[]
 color = ['b', 'g', 'r', 'm', 'y']
 plt.figure()
 for i in range(5):
@@ -25,5 +27,7 @@ plt.ylabel("Speedups")
 plt.xlabel("Image Size")
 plt.title("Convolution Speedup Curve for different Kernel Size")
 plt.legend(loc='lower right')
-# plt.show()
-plt.savefig("speedup_curve.png")
+plt.show()
+# plt.savefig("speedup_curve.png")
+
+#%%
