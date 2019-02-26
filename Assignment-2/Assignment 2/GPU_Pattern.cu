@@ -91,22 +91,25 @@ __global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *m
                 word = sm_text[row][col];
             }
             else {
-                // word = (text[idnex]>>(8*offset)) + (index+1]<<(32-8*offset)); 
+                // word = (text[index]>>(8*offset)) + (text[index+1]<<(32-8*offset)); 
                 word = (sm_text[row][col]>>(8*offset)) + (sm_text[row][col+1]<<(32-8*offset)); 
             }
 
             for (int w=0; w<nwords; w++){
                 if (word == sm_words[w]) {
-                    // atomicAdd((int *)&(sm_matches[w]), 1);
+                // if (word == words[w]) {
+                    // atomicAdd(&(sm_matches[w]), 1);
                     atomicAdd(&matches[w], 1);
                     break;
                 }
             }        
         }
     }
+    // __syncthreads();
     // if ((row2+col) < nwords) {
     //     atomicAdd(&matches[row2+col], sm_matches[row2+col]);
     // }
+    // __syncthreads();
 }
 
 int main() {
@@ -115,7 +118,7 @@ int main() {
     int wl;
     for (wl=0; wl<3; wl++) {
 
-        int length, len, nwords=20, matches[nwords];
+        int length, len, nwords=32, matches[nwords];
         char *ctext, keywords[nwords][LINEWIDTH], *line;
         line = (char*) malloc(sizeof(char)*LINEWIDTH);
         unsigned int  *text,  *words;
