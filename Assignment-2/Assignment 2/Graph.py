@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 # In[]
 x = ["Small", "Medium", "Large"]
 y = [
-    [18.1405, 44.8344, 84.6481],
-    [16.4648, 37.1486, 61.5419],
+    [467.489, 602.535, 663.28],
+    [185.193, 228.078, 249.612],
 ]
 size = ["Kernel Timing", "Kernel + Memory Transfer"]
 # kernel_3 = 
