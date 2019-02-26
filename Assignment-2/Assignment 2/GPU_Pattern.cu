@@ -14,7 +14,7 @@
 using namespace std;
 
 #define LINEWIDTH 20
-#define TOTAL 32
+#define TOTAL 512
 #define MAX_WORDS 20
 
 void CheckDiff(int * cpu, int * gpu, int nwords) {
@@ -56,29 +56,28 @@ void matchPattern_CPU(unsigned int *text, unsigned int *words, int *matches, int
 
 __global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *matches, int nwords, int length) {
 
-    int row2 = blockDim.x*threadIdx.y;
-    int row = threadIdx.y;
     int col = threadIdx.x;
 
-    __shared__ unsigned int sm_text[TOTAL][TOTAL+1];
+    __shared__ unsigned int sm_text[TOTAL+1];
     __shared__ unsigned int sm_words[MAX_WORDS];
     // __shared__ int sm_matches[MAX_WORDS];
 
-    int xDist = threadIdx.x + blockIdx.x*blockDim.x;
-    int yDist = threadIdx.y*blockDim.x*gridDim.x + blockDim.y*blockIdx.y*blockDim.x*gridDim.x;
-    int index = xDist + yDist;
+    // int xDist = threadIdx.x + blockIdx.x*blockDim.x;
+    // int yDist = threadIdx.y*blockDim.x*gridDim.x + blockDim.y*blockIdx.y*blockDim.x*gridDim.x;
+    // int index = xDist + yDist;
+    int index = col + blockDim.x*blockIdx.x;
 
     unsigned int word;
 
-    if ((row2+col) < nwords) {
-        sm_words[row2+col] = words[row2+col];
-        // sm_matches[row2+col] = 0;
+    if (col < nwords) {
+        sm_words[col] = words[col];
+        // sm_matches[col] = 0;
     }
 
     if (index < length) {
-        sm_text[row][col] = text[index];
-        if ( threadIdx.x == (blockDim.x-1)) {
-            sm_text[row][col+1] = text[index + 1];
+        sm_text[col] = text[index];
+        if (col == (blockDim.x-1)) {
+            sm_text[col+1] = text[index+1];
         }
     }
     __syncthreads();
@@ -88,11 +87,11 @@ __global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *m
         {
             if (offset==0) {
                 // word = text[index];
-                word = sm_text[row][col];
+                word = sm_text[col];
             }
             else {
                 // word = (text[index]>>(8*offset)) + (text[index+1]<<(32-8*offset)); 
-                word = (sm_text[row][col]>>(8*offset)) + (sm_text[row][col+1]<<(32-8*offset)); 
+                word = (sm_text[col]>>(8*offset)) + (sm_text[col+1]<<(32-8*offset)); 
             }
 
             for (int w=0; w<nwords; w++){
@@ -106,8 +105,8 @@ __global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *m
         }
     }
     // __syncthreads();
-    // if ((row2+col) < nwords) {
-    //     atomicAdd(&matches[row2+col], sm_matches[row2+col]);
+    // if (col < nwords) {
+    //     atomicAdd(&matches[col], sm_matches[col]);
     // }
     // __syncthreads();
 }
@@ -188,8 +187,8 @@ int main() {
         // cout << endl;
 
         // GPU Execution
-        const dim3 block_size(32, 32);
-        const dim3 num_blocks(1024, 1024);
+        const dim3 block_size(512, 1);
+        const dim3 num_blocks(65536, 1);
 
         cudaEvent_t start_kernel, stop_kernel, m_kernel_start, m_kernel_stop;
         cudaEventCreate(&start_kernel);
