@@ -14,8 +14,8 @@
 using namespace std;
 
 #define LINEWIDTH 20
-#define TOTAL 512
-#define MAX_WORDS 20
+#define TOTAL 32
+#define MAX_WORDS 32
 
 void CheckDiff(int * cpu, int * gpu, int nwords) {
     int Correct = 0, Wrong = 0;
@@ -60,18 +60,15 @@ __global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *m
 
     __shared__ unsigned int sm_text[TOTAL+1];
     __shared__ unsigned int sm_words[MAX_WORDS];
-    // __shared__ int sm_matches[MAX_WORDS];
 
-    // int xDist = threadIdx.x + blockIdx.x*blockDim.x;
-    // int yDist = threadIdx.y*blockDim.x*gridDim.x + blockDim.y*blockIdx.y*blockDim.x*gridDim.x;
-    // int index = xDist + yDist;
-    int index = col + blockDim.x*blockIdx.x;
+    int xDist = threadIdx.x + blockIdx.x*blockDim.x;
+    int yDist = threadIdx.y*blockDim.x*gridDim.x + blockDim.y*blockIdx.y*blockDim.x*gridDim.x;
+    int index = xDist + yDist;
 
     unsigned int word;
 
     if (col < nwords) {
         sm_words[col] = words[col];
-        // sm_matches[col] = 0;
     }
 
     if (index < length) {
@@ -89,26 +86,18 @@ __global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *m
                 // word = text[index];
                 word = sm_text[col];
             }
-            else {
+            else if (index != length-1) {
                 // word = (text[index]>>(8*offset)) + (text[index+1]<<(32-8*offset)); 
                 word = (sm_text[col]>>(8*offset)) + (sm_text[col+1]<<(32-8*offset)); 
             }
-
             for (int w=0; w<nwords; w++){
                 if (word == sm_words[w]) {
                 // if (word == words[w]) {
-                    // atomicAdd(&(sm_matches[w]), 1);
                     atomicAdd(&matches[w], 1);
-                    break;
                 }
             }        
         }
     }
-    // __syncthreads();
-    // if (col < nwords) {
-    //     atomicAdd(&matches[col], sm_matches[col]);
-    // }
-    // __syncthreads();
 }
 
 int main() {
@@ -187,8 +176,9 @@ int main() {
         // cout << endl;
 
         // GPU Execution
-        const dim3 block_size(512, 1);
-        const dim3 num_blocks(65536, 1);
+        const dim3 block_size(32, 1);
+        // const dim3 num_blocks(512, 512);
+        const dim3 num_blocks(ceil(len/32), 1);
 
         cudaEvent_t start_kernel, stop_kernel, m_kernel_start, m_kernel_stop;
         cudaEventCreate(&start_kernel);
@@ -223,8 +213,8 @@ int main() {
         float k_time, k2_time ;
         cudaEventElapsedTime(&k_time, start_kernel, stop_kernel);
         cudaEventElapsedTime(&k2_time, m_kernel_start, m_kernel_stop);
-        cout  << "[" << wl << "] GPU-Kernel Time: " << k_time << endl;
-        cout  << "[" << wl << "] GPU-Kernel+Memory Time: " << k2_time << endl;
+        cout  << "[" << wl << "] GPU-Kernel Time: " << k_time  << "ms" << endl;
+        cout  << "[" << wl << "] GPU-Kernel + Memory Time: " << k2_time  << "ms" << endl;
 
         // CPU execution
         const clock_t begin_time = clock();
@@ -249,4 +239,6 @@ int main() {
         cudaFree(d_words);
         cudaFree(d_matches);
     }
+
+    return 0;
 }
