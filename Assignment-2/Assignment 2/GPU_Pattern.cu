@@ -27,9 +27,11 @@ void CheckDiff(int * cpu, int * gpu, int nwords) {
             Wrong++;
         }
     }
-    printf("Correctly Matched: %d\n", Correct);
     if (Wrong == 0) {
-        printf("Identical Results\n\n");
+        printf("Correctly Matched: True\n\n");
+    }
+    else {
+        printf("Correctly Matched: False\n\n");
     }
 }
 
@@ -54,49 +56,57 @@ void matchPattern_CPU(unsigned int *text, unsigned int *words, int *matches, int
 	}
 }
 
-__global__ void matchPattern_GPU(unsigned int *text, unsigned int *words, int *matches, int nwords, int length) {
+__global__ void matchPattern_GPU(unsigned int *text, const unsigned int *words, int *matches, int nwords, int length) {
 
     int col = threadIdx.x;
+    int index = col + blockIdx.x*blockDim.x;
+
+    if (index >= length) {
+        return;
+    }
 
     __shared__ unsigned int sm_text[TOTAL+1];
     __shared__ unsigned int sm_words[MAX_WORDS];
 
-    int xDist = threadIdx.x + blockIdx.x*blockDim.x;
-    int yDist = threadIdx.y*blockDim.x*gridDim.x + blockDim.y*blockIdx.y*blockDim.x*gridDim.x;
-    int index = xDist + yDist;
+    // int xDist = threadIdx.x + blockIdx.x*blockDim.x;
+    // int yDist = threadIdx.y*blockDim.x*gridDim.x + blockDim.y*blockIdx.y*blockDim.x*gridDim.x;
+    // int index = xDist + yDist;
+    // __shared__ int len;
+
+    // if (threadIdx.x == 0) {
+    //     len = length;
+    // }
 
     unsigned int word;
 
-    if (col < nwords) {
+    if (col < 32) {
         sm_words[col] = words[col];
     }
 
-    if (index < length) {
+    // if (index < length) {
         sm_text[col] = text[index];
-        if (col == (blockDim.x-1)) {
-            sm_text[col+1] = text[index+1];
-        }
-    }
+        // if (col == TOTAL-1) {
+        sm_text[col+1] = text[index+1];
+        // }
+    // }
     __syncthreads();
 
-    if (index < length) {
-        for (int offset=0; offset<4; offset++)
-        {
-            if (offset==0) {
-                // word = text[index];
-                word = sm_text[col];
-            }
-            else if (index != length-1) {
-                // word = (text[index]>>(8*offset)) + (text[index+1]<<(32-8*offset)); 
-                word = (sm_text[col]>>(8*offset)) + (sm_text[col+1]<<(32-8*offset)); 
-            }
-            for (int w=0; w<nwords; w++){
-                if (word == sm_words[w]) {
-                // if (word == words[w]) {
-                    atomicAdd(&matches[w], 1);
-                }
-            }        
+    for (int offset=0; offset<4; offset++)
+    {
+        if (offset==0) {
+            // word = text[index];
+            word = sm_text[col];
         }
+        else {
+            // word = (text[index]>>(8*offset)) + (text[index+1]<<(32-8*offset)); 
+            word = (sm_text[col]>>(8*offset)) + (sm_text[col+1]<<(32-8*offset)); 
+        }
+        for (int w=0; w<32; w++){
+            if (word == sm_words[w]) {
+            // if (word == words[w]) {
+                atomicAdd(&matches[w], 1);
+            }
+        }        
     }
 }
 
@@ -176,9 +186,9 @@ int main() {
         // cout << endl;
 
         // GPU Execution
-        const dim3 block_size(32, 1);
+        const dim3 block_size(TOTAL, 1);
         // const dim3 num_blocks(512, 512);
-        const dim3 num_blocks(ceil(len/32), 1);
+        const dim3 num_blocks(ceil(len/TOTAL), 1);
 
         cudaEvent_t start_kernel, stop_kernel, m_kernel_start, m_kernel_stop;
         cudaEventCreate(&start_kernel);
@@ -228,10 +238,10 @@ int main() {
         
         CheckDiff(matches, mat, nwords);
 
-        printf("[%d] Printing Matches:\n", wl);
-        printf("Word\t  |\tNumber of Matches\n===================================\n");
-        for (int i = 0; i < nwords; ++i)
-            printf("%s\t  |\t%d\n", keywords[i], mat[i]);
+        // printf("[%d] Printing Matches:\n", wl);
+        // printf("Word\t  |\tNumber of Matches\n===================================\n");
+        // for (int i = 0; i < nwords; ++i)
+            // printf("%s\t  |\t%d\n", keywords[i], mat[i]);
 
         free(ctext);
         free(words);

@@ -78,8 +78,8 @@ int main(int argc, const char **argv)
 	fclose(wfile);
 
 	// cout << "K: " << k << endl;
-	fp = fopen("./data/large.txt","r");
-	// fp = fopen("./data/small.txt","r");
+	// fp = fopen("./data/large.txt","r");
+	fp = fopen("./data/small.txt","r");
 	if (!fp) {	
 		printf("Unable to open the file.\n");	
 		exit(0);
