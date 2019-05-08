@@ -1,4 +1,4 @@
-# GPU-Assignments
+# GPU-Computing-Assignments
 
 ## Assignment-1
 * Image Convolution on GPU.
